@@ -1,29 +1,93 @@
 # mvv display for ESP32
 Zeigt die nächsten Abfahrten der MVV auf einem kleinem OLED Display an. Es handelt sich hierbei um kein Projekt der MVV.
- 
-## Benötigtes:
-- ESP32 mit OLED Display: https://www.amazon.de/dp/B076P8GRWV/ref=cm_sw_em_r_mt_dp_U_Md.6DbQCS5WA1
-- Micro USB Kabel
-- USB Netzteil
-- Computer zum Programmieren
- 
-## Anleitung:
-1.  Arduino IDE installieren: https://www.arduino.cc/en/main/software
-2.  ESP32 Board installieren: https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
-3.  TOOLS -> Manage Libraries.. anklicken und nach der "ESP8266 and ESP32 OLED driver for SSD1306 displays" (ThingPulse) suchen und installieren. Anschließend nach der "Arduinojson" suchen und ebenfalls installieren.
-4.  Tools -> Board -> "TTGO LoEa-32-OLED V1" auswählen.
-5.  Tools ->  Port anschauen und die Enträge merken falls nicht ausgeblendet.
-6.  ESP32 mit dem Kabel mit dem Computer verbinden und erneut unter Tools ->  Port schauen nun müsste ein neuer Port hinzugekommen sein/ Port ist nicht mehr ausgeblendet. Diesen nun auswählen.
-7.  MVV_ESP/MVV_ESP.ino aus diesem Repo kopieren und in der Arduino IDE einfügen.
-8.  Sketch -> Verify/Compile und schauen ob irgendwelche Fehler in der Konsole auftreten. Gegebenfalls die Libraries überprüfen.
-9. In den Zeilen const char* ssid = "XXX"; sowie const char* password =  "XXX"; die drei XXX jeweils durch WLAN Namen und Passwort ersetzten.
-10. Die Seite https://www.mvg.de/dienste/abfahrtszeiten.html im Firefox Webbrowser öffnen und anschließend STRG + SHIFT + E drücken. Jetzt sollte ein neues Fenster aufgegangen sein welches den Netzwerkverkehr mitschneidet. 
-11. Nun den gewünschten Bahnhof ganz normal eingeben und sich die aktuellen Abfahrten anzeigen lassen.
-12. Im in Schritt 10 geöffneten Fenster bei Type nach dem/den Paketen mit json suchen und die Bahnhof nun in der Spalte File rauslesen.
-13. Das was in File steht muss man nun in der Zeile const char* url =.... am Ende ersetzen.
-14. Sketch -> Upload
-15. Jetzt sollten auf dem Display die aktuellen Abfahrten der Sbahn angezeigt werden
-16. Zum Debuggen kann der Serielle Monitor unter Tools -> Serial Monitor aufgerufen werden.
 
-## Jodel:
-[https://shared.jodel.com/58NiubGCf2?channel=other](https://shared.jodel.com/58NiubGCf2?channel=other) 
+## Geops API Sbahn München:
+Diese API kommt unter anderem in der München Navigator APP oder auf s-bahn-muenchen-live.de zum Einsatz und liefert sehr genaue Echtzeitinformationen, allerdings ausschließlich für die Sbahn. Alle nachfolgenden Erkenntnisse stammen aus öffentlichen Quellen oder aus Mitschnitten und Analysen des Netzwerktraffics.
+
+### Funktionsweise
+Jeder Zug sendet ca. alle 10 Sekunden ein GPS-Signal, das neben der Position auch Informationen zum aktuellen Zuglauf und zum Status des Zuges enthält. Diese Daten werden serverseitig ausgewertet und die daraus berechneten Abfahrtszeiten sowie die Zugpositionen auf der MVV-Netzkarte über die API verbereitet. 
+
+### Server
+URL                             | Port     | Protokoll
+--------------------------------| -------- | --------
+wss://tralis.sbahnm.geops.de/ws | 443      | Websocket
+
+### Kommandos
+Die Kommandos die an den Server geschickt werden sind in der redis-websocket-api definiert. Die wichtigesten Kommandos für dieses Projekt mit ihren Keys sind hier aufgelistet: 
+
+Kommando              | Funktion 
+----------------------|-----------------------------------------------------
+PING                  | Überprüfen der Verbindung
+GET healthcheck       | Auskunft über den Serverstatus
+GET timetable_8000261 | Liefert die aktuellen Abfahrtzeiten am Hauptbahnhof
+SUB timetable_8000261 | Abboniert die Abfahrtzeiten am Hauptbahnhof
+DEL timetable_8000261 | Deabboniert die Abfahrtzeiten am Hauptbahnhof
+
+Während GET einmalig die nächsten Abfahrten liefert, bekommt der Client mit SUB immer automatisch eine Aktualisierung. Die Bahnhofsnummer ist nicht identisch mit der ID der MVG API und kann aktuell schneinbar nur durch Mitschnitt herausgefunden werden. Ideen? Der Server antwortet immer im JSON Format. Ein Beispielpaket eines Timetabeles einer Sbahn sieht folgendermaßen aus:
+
+
+```json
+{
+   "timestamp":1576000939716.51,
+   "content":{
+      "ris_estimated_time":1576002060000.0,
+      "created_at":1575990536037.232,
+      "min_arrival_time":1576001823000.0,
+      "train_type":2,
+      "fzo_estimated_time":1576002222000.0,
+      "next_stoppoints":[
+         "MDA",
+         "MKFS",
+         "MMAL",
+         "MAUG",
+         "MOZ",
+         "ML",
+         "MMHG",
+         "MMDN",
+         "MHAB",
+         "MHT",
+         "MKA",
+         "MMP",
+         "MIT",
+         "MRP",
+         "MOP"
+      ],
+      "train_id":139923201210800,
+      "no_stop_between":null,
+      "line":{
+         "text_color":"#ffffff",
+         "color":"#8bbd4d",
+         "id":2,
+         "name":"S2"
+      },
+      "state":null,
+      "new_to":null,
+      "updated_at":1575998600946.968,
+      "no_stop_till":null,
+      "platform":"1",
+      "formation":null,
+      "at_station_ds100":"MDA",
+      "ris_aimed_time":1576002060000.0,
+      "to":[
+         "M\u00fcnchen Ost"
+      ],
+      "has_fzo":true,
+      "train_number":6015,
+      "time":1576002060000.0,
+      "call_id":37049115
+   },
+   "source":"timetable_8000261",
+   "client_reference":null
+}
+```
+Die ris_aimed_time stellet scheinbar die geplante Abfahrtszeit nach Fahrplan dar. Interessant wären die ris_estimated_time, min_arrival_time und fzo_estimated_time zu der aktuell weitere Erkenntnisse fehlen... Ideen?
+
+Weitere sehr Interessante Infos sind train_type mit der Wagonanzahl  sowie at_station_ds100 mit der aktuellen Stationsposition.
+
+## Testprogramm:
+Das Testprogramm abonniert die Abfahrten des Hauptbahnhof und gibt diese auf der seriellen Schnittstelle aus. Hierfür wird die ArduinoWebockets Library benötigt: [https://github.com/gilmaimon/ArduinoWebsockets](https://github.com/gilmaimon/ArduinoWebsockets)
+
+## Quellen:
+[https://geops.ch/sbahnm-live](https://geops.ch/sbahnm-live)  
+[https://geops.ch/blog/zuege-echtzeit](https://geops.ch/blog/zuege-echtzeit)  
+[https://github.com/geops/redis-websocket-api](https://github.com/geops/redis-websocket-api)
