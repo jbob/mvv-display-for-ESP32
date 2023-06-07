@@ -53,7 +53,7 @@ int connect_wifi() {
                 // ... yes it is
                 WiFi.begin(configs[j].wifi_name, configs[j].wifi_pass);
                 while (WiFi.status() != WL_CONNECTED) {
-                    delay(1000);
+                    delay(3000);
                     Serial.println("Connecting to WiFi...");
                 }
                 Serial.printf("Connected to the WiFi network: %s\n", ssid.c_str());
@@ -90,15 +90,13 @@ void handle_mvg_api(Config config) {
             Serial.println(error.c_str());
         } else {
             Serial.println("No errors");
-            String servings = doc["departures"][0];
-            Serial.println(servings);
 
             time_t now;
             time(&now);
             Serial.println(now);
 
             display.clear();
-            unsigned int departures_length = doc["departures"].size();
+            unsigned int departures_length = doc.size();
             unsigned int i = 0;
             unsigned int cnt = 0;
 
@@ -114,7 +112,7 @@ void handle_mvg_api(Config config) {
                         interesting_line = true;
                         break;
                     }
-                    if (config.include_line[j] && strcmp(config.include_line[j], doc["departures"][i]["label"]) == 0) {
+                    if (config.include_line[j] && strcmp(config.include_line[j], doc[i]["label"]) == 0) {
                         // We want to see this line
                         interesting_line = true;
                         break;
@@ -122,7 +120,7 @@ void handle_mvg_api(Config config) {
                 }
                 if (interesting_line) {
                     for (int j=0; j<MAX_EXCLUDE_DESTINATION; ++j) {
-                        if (config.exclude_destinations[j] && strcmp(config.exclude_destinations[j], doc["departures"][i]["destination"]) == 0) {
+                        if (config.exclude_destinations[j] && strcmp(config.exclude_destinations[j], doc[i]["destination"]) == 0) {
                             interesting_destination = false;
                             break;
                         }
@@ -130,7 +128,7 @@ void handle_mvg_api(Config config) {
                 }
                 if (interesting_line && interesting_destination) {
                     //Calc minutes until departure
-                    unsigned long departure = doc["departures"][i]["departureTime"].as<long long>() / 1000; //ms to seconds
+                    unsigned long departure = doc[i]["realtimeDepartureTime"].as<long long>() / 1000; //ms to seconds
                     Serial.println(departure);
 
                     unsigned long minutes = 0;
@@ -139,12 +137,12 @@ void handle_mvg_api(Config config) {
                         Serial.println(wait);
                         minutes = wait / 60;
                         if (wait % 60 > 30) ++minutes;
-                        minutes +=  doc["departures"][i]["delay"].as<int>();
+                        //minutes +=  doc[i]["delay"].as<int>();
                     }
                     Serial.println(minutes);
 
-                    String label = doc["departures"][i]["label"].as<String>();
-                    String destination  = doc["departures"][i]["destination"].as<String>();
+                    String label = doc[i]["label"].as<String>();
+                    String destination  = doc[i]["destination"].as<String>();
                     String full_name = label + " " + destination;
 
                     display.setTextAlignment (TEXT_ALIGN_LEFT);
